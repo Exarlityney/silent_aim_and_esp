@@ -1,4 +1,4 @@
--- Venice Aim/ESP - fichier .lua
+-- Venice Aim/ESP — corrigé / complet
 repeat wait() until game:IsLoaded()
 local plrs = game:GetService("Players")
 local plr = plrs.LocalPlayer
@@ -6,8 +6,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Teams = game:GetService("Teams")
 local Camera = workspace.CurrentCamera
-local mouse = plr:GetMouse()
-local Drawing = Drawing or (pcall(function() return Drawing.new("Line") end) and Drawing or nil)
+local Drawing = Drawing
 
 local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
 local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
@@ -15,10 +14,11 @@ local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 local Settings = {
-    Silent = false, FOV = 150, FOVVisible = false, Method = "auto",
+    Silent = false, FOV = 150, FOVVisible = false, Method = "Raycast",
     TargetPart = "Head", VisibleCheck = false, FilterMode = "Ennemis",
     SelectedTeams = {}, Box = true, FullBox = false, Skeleton = true,
     Tracers = true, Health = true, Meters = true, ESP = true,
+    ESPColor = Color3.fromRGB(200, 150, 200),
 }
 
 local Window = Library:CreateWindow({ Title = 'Venice Aim/ESP', Center = true, AutoShow = true, TabPadding = 8, MenuFadeTime = 0.2 })
@@ -61,9 +61,6 @@ teamDropdown = Filter:AddDropdown('TeamsSel', {
 
 Teams.ChildAdded:Connect(refreshTeams)
 Teams.ChildRemoved:Connect(refreshTeams)
-plrs.PlayerAdded:Connect(function(p)
-    p:GetPropertyChangedSignal("Team"):Connect(function() end) -- rescan à la frame
-end)
 
 -- ===== CIBLE =====
 local ValidParts = {"Head","HumanoidRootPart","Torso","UpperTorso","LowerTorso"}
@@ -72,7 +69,10 @@ local function visible(p)
     if not char or not lchar then return false end
     local root = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
     if not root then return false end
-    local parts = Camera:GetPartsObscuringTarget({root.Position, lchar, char}, {lchar, char})
+    local ignore = {}
+    for _, v in ipairs(char:GetChildren()) do if v:IsA("BasePart") then ignore[#ignore+1] = v end end
+    for _, v in ipairs(lchar:GetChildren()) do if v:IsA("BasePart") then ignore[#ignore+1] = v end end
+    local parts = Camera:GetPartsObscuringTarget({root.Position}, ignore)
     return #parts == 0
 end
 
@@ -100,9 +100,8 @@ local function closest()
     return best
 end
 
--- ===== SILENT AIM (auto) =====
+-- ===== SILENT AIM =====
 local function dir(o, t) return (t - o).Unit * (t - o).Magnitude end
-local workingMethod
 local OldNamecall
 OldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local method = getnamecallmethod()
@@ -110,13 +109,14 @@ OldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(...)
     local self = Args[1]
     if Settings.Silent and self == workspace and not checkcaller() then
         local t = closest()
-        if t then
-            if Settings.Method == "auto" then workingMethod = workingMethod or method end
-            if method == (Settings.Method == "auto" and workingMethod or Settings.Method) then
-                if method == "Raycast" then Args[3] = dir(Args[2], t.Position)
-                else local ray = Args[2]; if ray then Args[2] = Ray.new(ray.Origin, dir(ray.Origin, t.Position)) end end
-                return OldNamecall(unpack(Args))
+        if t and (method == Settings.Method or (Settings.Method == "Raycast" and method == "FindPartOnRay") or (Settings.Method == "FindPartOnRay" and method == "Raycast")) then
+            if method == "Raycast" then
+                Args[3] = dir(Args[2], t.Position)
+            else
+                local ray = Args[2]
+                if ray then Args[2] = Ray.new(ray.Origin, dir(ray.Origin, t.Position)) end
             end
+            return OldNamecall(unpack(Args))
         end
     end
     return OldNamecall(...)
@@ -127,18 +127,4 @@ Silent:AddToggle('SilentOn', { Text = 'Silent Aim', Default = false, Callback = 
 Silent:AddSlider('Fov', { Text = 'FOV', Default = 150, Min = 10, Max = 800, Rounding = 0, Compact = false, Callback = function(v) Settings.FOV = v end })
 Silent:AddToggle('FovVis', { Text = 'Afficher le FOV', Default = false, Callback = function(v) Settings.FOVVisible = v end })
 Silent:AddDropdown('Part', { Values = { 'Random', 'Head', 'HumanoidRootPart', 'Torso', 'UpperTorso', 'LowerTorso' }, Default = 'Head', Multi = false, Text = 'Part visée', Callback = function(v) Settings.TargetPart = v end })
-Silent:AddToggle('Vis', { Text = 'Visible Check', Default = false, Callback = function(v) Settings.VisibleCheck = v end })
-
--- ===== ESP UI =====
-EspBox:AddToggle('EspOn', { Text = 'ESP', Default = true, Callback = function(v) Settings.ESP = v end })
-EspBox:AddToggle('B', { Text = 'Box', Default = true, Callback = function(v) Settings.Box = v end })
-EspBox:AddToggle('FB', { Text = 'Full box', Default = false, Callback = function(v) Settings.FullBox = v end })
-EspBox:AddToggle('Sk', { Text = 'Skeleton', Default = true, Callback = function(v) Settings.Skeleton = v end })
-EspBox:AddToggle('Tr', { Text = 'Tracers', Default = true, Callback = function(v) Settings.Tracers = v end })
-EspBox:AddToggle('Hp', { Text = 'Health', Default = true, Callback = function(v) Settings.Health = v end })
-EspBox:AddToggle('Mt', { Text = 'Meters', Default = true, Callback = function(v) Settings.Meters = v end })
-
--- ===== ESP RENDER =====
-local espData = {}
-local function newEsp()
-    local t = { box = Drawing.new("Square"), full = Drawing.new("Square"), name = Drawing.new("Text"), hp = Drawing.new("Square"), meters = Drawing.new("Text"), sk
+Silent:AddToggle
